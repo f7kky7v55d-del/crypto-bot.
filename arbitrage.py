@@ -2,6 +2,8 @@ import time
 import requests
 import telebot
 import threading
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # --- НАСТРОЙКИ БОТА ---
 TG_TOKEN = "9188990680:AAEmtD3P4Ej78ej8ARmpSXq6gDacq25ka44"
@@ -21,6 +23,23 @@ MONETS = {
     "TRX": {"bybit": "TRXUSDT", "dzengi": "TRXUSDT"}
 }
 
+# --- КОСТЫЛЬ ДЛЯ RENDER (ФЕЙКОВЫЙ СЕРВЕР) ---
+class WebhookServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Bot is running smoothly!")
+
+def run_dummy_server():
+    # Render автоматически передает номер порта в переменную PORT.
+    # Если ее нет, по умолчанию возьмется порт 10000.
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), WebhookServer)
+    print(f"Фейковый сервер запущен на порту {port} для обмана Render")
+    server.serve_forever()
+# ---------------------------------------------
+
 def get_prices(coin_info):
     try:
         # Официальный публичный REST API Bybit V5 (категория spot)
@@ -31,10 +50,9 @@ def get_prices(coin_info):
         dzengi_url = f"https://currency.com{coin_info['dzengi']}"
         dzengi_res = requests.get(dzengi_url, timeout=5).json()
         
-        # Исправленный безопасный разбор ответов
+        # Безопасный разбор ответов
         bybit_price = float(bybit_res["result"]["list"][0]["lastPrice"])
         
-        # На Dzengi ответ приходит либо объектом, либо массивом из одного объекта
         if isinstance(dzengi_res, list):
             dzengi_price = float(dzengi_res[0]["askPrice"])
         else:
@@ -42,7 +60,6 @@ def get_prices(coin_info):
             
         return dzengi_price, bybit_price
     except Exception as e:
-        # Если API временно недоступно или пропал интернет — бот не падает, а логирует ошибку
         print(f"Ошибка получения цен для {coin_info['bybit']}: {e}")
         return None, None
 
@@ -56,7 +73,6 @@ def monitor_market():
             continue
             
         for coin_name, coin_info in MONETS.items():
-            # Дополнительная проверка, чтобы мгновенно прервать цикл при /stop
             if not IS_RUNNING:
                 break
                 
@@ -76,7 +92,7 @@ def monitor_market():
                         bot.send_message(USER_CHAT_ID, message, parse_mode="Markdown")
                         time.sleep(60)  # Пауза, чтобы не спамить одной и той же монетой
                     except Exception as tg_err:
-                        print(f"Не удалось отправить сообщение в Telegram: {tg_err}")
+                        print(f"Ошибка Telegram: {tg_err}")
                         
         time.sleep(CHECK_INTERVAL)
 
@@ -101,12 +117,19 @@ def stop_bot(message):
         bot.send_message(USER_CHAT_ID, "⏸️ Мониторинг уже стоит на паузе.")
 
 if __name__ == "__main__":
-    # 1. Запуск мониторинга рынка в фоновом потоке
+    # 1. Запуск фейкового веб-сервера в отдельном потоке (для прохождения проверки Render)
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
+    # 2. Запуск мониторинга рынка во второстепенном потоке
     threading.Thread(target=monitor_market, daemon=True).start()
     
-    # Стартовое системное уведомление
     print("Бот успешно запущен на компьютере!")
-    bot.send_message(USER_CHAT_ID, "🚀 Бот успешно запущен! Отправьте /stop для паузы или /start для возобновления.")
     
-    # 2. Бесконечный запуск прослушивания команд Telegram (основной поток)
+    # Стартовый сигнал в чат
+    try:
+        bot.send_message(USER_CHAT_ID, "🚀 Бот успешно запущен на Render с обходом портов! Отправьте /stop для паузы или /start для запуска.")
+    except Exception as e:
+        print(f"Ошибка отправки стартового сообщения: {e}")
+    
+    # 3. Основной поток отдаем под бесконечный опрос Telegram-команд
     bot.infinity_polling()
