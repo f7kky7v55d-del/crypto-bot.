@@ -5,45 +5,47 @@ import telebot
 TG_TOKEN = "9188990680:AAG8uQ_jl094-AQligfEQJFDdXnHIdf48dI"
 USER_CHAT_ID = "7965148154"
 MIN_SPREAD = 1.2
-CHECK_INTERVAL = 15
+CHECK_INTERVAL = 10
 
 bot = telebot.TeleBot(TG_TOKEN)
 
-def get_bybit_price():
-    try:
-        url = "https://bybit.com"
-        response = requests.get(url, timeout=5).json()
-        return float(response["result"]["list"]["lastPrice"])
-    except:
-        return None
+# Монеты и их правильные тикеры для Bybit и Dzengi
+MONETS = {
+    "LTC": {"bybit": "LTCUSDT", "dzengi": "LTC/USDT"},
+    "XRP": {"bybit": "XRPUSDT", "dzengi": "XRP/USDT"},
+    "TRX": {"bybit": "TRXUSDT", "dzengi": "TRX/USDT"}
+}
 
-def get_dzengi_price():
+def get_prices(coin_info):
     try:
-        url = "https://currency.com"
-        response = requests.get(url, timeout=5).json()
-        return float(response["ask"])
+        # Прямые запросы к техническим API серверов
+        bybit_res = requests.get(f"https://bybit.com{coin_info['bybit']}", timeout=5).json()
+        dzengi_res = requests.get(f"https://currency.com{coin_info['dzengi']}", timeout=5).json()
+        
+        bybit_price = float(bybit_res["result"]["list"][0]["lastPrice"])
+        dzengi_price = float(dzengi_res["ask"])
+        return dzengi_price, bybit_price
     except:
-        return None
+        return None, None
 
 def monitor_market():
-    bot.send_message(USER_CHAT_ID, "🚀 Бот-информатор запущен и мониторит рынок РБ ⇄ Bybit!")
+    bot.send_message(USER_CHAT_ID, "🔥 Мульти-бот запущен! Мониторю LTC, XRP, TRX 24/7...")
     while True:
-        bybit_ltc = get_bybit_price()
-        dzengi_ltc = get_dzengi_price()
-        if bybit_ltc and dzengi_ltc:
-            if dzengi_ltc < bybit_ltc:
-                spread = ((bybit_ltc - dzengi_ltc) / dzengi_ltc) * 100
+        for coin_name, coin_info in MONETS.items():
+            dzengi_p, bybit_p = get_prices(coin_info)
+            
+            if dzengi_p and bybit_p and dzengi_p < bybit_p:
+                spread = ((bybit_p - dzengi_p) / dzengi_p) * 100
                 if spread >= MIN_SPREAD:
                     message = (
-                        f"🚨 **НАЙДЕНА СВЯЗКА LTC!**\n\n"
-                        f"🔹 Цена Dzengi (РБ): **${dzengi_ltc:.2f}**\n"
-                        f"🔸 Цена Bybit: **${bybit_ltc:.2f}**\n\n"
-                        f"📈 Чистый спред: 🔥 **{spread:.2f}%**\n"
-                        f"💼 Профит с $1000: ~**${(1000 * spread / 100):.2f}**\n\n"
-                        f"ℹ️ *Купи LTC на Dzengi, переведи на Bybit и продай в USDT!*"
+                        f"🚨 **НАЙДЕНА СВЯЗКА ПО {coin_name}!**\n\n"
+                        f"🔹 Dzengi (РБ): **${dzengi_p:.4f}**\n"
+                        f"🔸 Bybit: **${bybit_p:.4f}**\n\n"
+                        f"📈 Спред: 🔥 **{spread:.2f}%**\n"
+                        f"💼 Профит с $1000: ~**${(1000 * spread / 100):.2f}**\n"
                     )
                     bot.send_message(USER_CHAT_ID, message, parse_mode="Markdown")
-                    time.sleep(180)
+                    time.sleep(60) # Пауза 1 минута, чтобы не спамить одной монетой
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
