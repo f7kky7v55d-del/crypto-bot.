@@ -108,11 +108,12 @@ def get_orderbook_prices(coin, deposit):
     avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids)
     return avg_dzengi_price, avg_bybit_price
 
+# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ОШИБКА ИСПРАВЛЕНА ⚡)
 def check_bybit_wallet_status(coin):
     try:
         url = f"https://bybit.com{coin}USDT"
         res = requests.get(url, timeout=5).json()
-        status = res.get("result", {}).get("list", [{}]).get("status", "Trading")
+        status = res.get("result", {}).get("list", [{}])[0].get("status", "Trading")
         return status == "Trading"
     except:
         return True
@@ -121,7 +122,7 @@ def calculate_internal_triangle(deposit):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         t1_res = requests.get("https://bybit.com", headers=headers, timeout=5).json()
-        t1 = float(t1_res["result"]["list"]["lastPrice"])
+        t1 = float(t1_res["result"]["list"][0]["lastPrice"])
         net_profit = deposit * 0.0031  
         return net_profit
     except:
@@ -193,7 +194,6 @@ def cmd_start(message):
 def process_custom_deposit_step(message):
     global CURRENT_DEPOSIT
     try:
-        # Очищаем текст от возможных пробелов и знаков $
         clean_text = message.text.replace("$", "").replace(" ", "").strip()
         new_dep = float(clean_text)
         if new_dep <= 0:
@@ -209,7 +209,6 @@ def process_custom_deposit_step(message):
 def handle_text_buttons(message):
     global CURRENT_DEPOSIT, MIN_PROFIT_TRIGGER_USD
     
-    # Кнопка переключения в режим ожидания ввода суммы
     if message.text == "✍️ Ввести свой депо":
         msg = bot.send_message(message.chat.id, "✍️ Напишите в чат сумму вашего оборотного депозита (только число в долларах, например: `1500`):")
         bot.register_next_step_handler(msg, process_custom_deposit_step)
@@ -229,3 +228,4 @@ def handle_text_buttons(message):
         for coin in MONETS.keys():
             try:
                 dzengi_p, bybit_p = get_orderbook_prices(coin, CURRENT_DEPOSIT)
+                usd_after_dzengi = CURRENT_DEPOSIT * (1 - DZENGI_TRADE_FEE)
