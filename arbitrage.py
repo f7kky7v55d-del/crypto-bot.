@@ -15,7 +15,7 @@ TG_TOKEN = "9188990680:AAEmtD3P4Ej78ej8ARmpSXq6gDacq25ka44"
 USER_CHAT_ID = "7965148154"
 
 CURRENT_DEPOSIT = 1000.0  
-MIN_PROFIT_TRIGGER_USD = 5.0  # Будильник сработает, только если чистый профит выше $5!
+MIN_PROFIT_TRIGGER_USD = 5.0  # Будильник сработает, только если чистый профит выше этого значения!
 
 bot = telebot.TeleBot(TG_TOKEN)
 
@@ -53,13 +53,11 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), WebhookServer)
     server.serve_forever()
 
-# Автоматический парсинг стакана P2P Bybit для вывода в BYN на карты РБ
 def get_live_byn_p2p_rate():
-    # Возвращаем текущий базовый рыночный курс доллара к BYN на P2P
-    return 3.32 
+    return 3.32
 
 def get_orderbook_prices(coin, deposit):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     bybit_req = requests.get(MONETS[coin]['bybit_url'], headers=headers, timeout=5)
     if bybit_req.status_code != 200:
         raise Exception("Bybit Error")
@@ -88,7 +86,7 @@ def get_orderbook_prices(coin, deposit):
                 break
         avg_dzengi_price = (deposit * (1 - DZENGI_TRADE_FEE)) / total_coins_bought if total_coins_bought > 0 else float(asks)
     except:
-        mock_bybit_p = float(bybit_res["result"]["b"][0][0])
+        mock_bybit_p = float(bybit_res["result"]["b"])
         avg_dzengi_price = mock_bybit_p * 0.995 
     
     bids = bybit_res["result"]["b"]
@@ -107,31 +105,29 @@ def get_orderbook_prices(coin, deposit):
             remaining_coins = 0
             break
             
-    avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids[0][0])
+    avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids)
     return avg_dzengi_price, avg_bybit_price
 
-# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ПОЛНОСТЬЮ ИСПРАВЛЕНО И БЕЗОПАСНО)
 def check_bybit_wallet_status(coin):
     try:
         url = f"https://bybit.com{coin}USDT"
         res = requests.get(url, timeout=5).json()
-        status = res.get("result", {}).get("list", [{}])[0].get("status", "Trading")
+        status = res.get("result", {}).get("list", [{}]).get("status", "Trading")
         return status == "Trading"
     except:
         return True
 
-# ФУНКЦИЯ 3: Внутрибиржевой треугольник на Bybit
 def calculate_internal_triangle(deposit):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         t1_res = requests.get("https://bybit.com", headers=headers, timeout=5).json()
-        t1 = float(t1_res["result"]["list"][0]["lastPrice"])
+        t1 = float(t1_res["result"]["list"]["lastPrice"])
         net_profit = deposit * 0.0031  
         return net_profit
     except:
         return 0
 
-# АВТОМАТИЧЕСКИЙ КРУГЛОСУТОЧНЫЙ СКАНИРУЮЩИЙ ЦИКЛ
+# КРУГЛОСУТОЧНЫЙ СКАНИРУЮЩИЙ ЦИКЛ ОПИРАЕТСЯ НА ВАШ ТЕКУЩИЙ ДЕПОЗИТ
 def global_auto_scanner():
     print("Фоновый авто-сканер рынка запущен...")
     while True:
@@ -156,7 +152,7 @@ def global_auto_scanner():
                         
                         alert = (
                             f"🚨 **АВТО-СИГНАЛ: НАЙДЕН СПРЕД ПО {coin}!**\n\n"
-                            f"💰 Ваш депозит: **${CURRENT_DEPOSIT:.2f} USD**\n"
+                            f"💰 Текущий депозит в расчете: **${CURRENT_DEPOSIT:.2f} USD**\n"
                             f"🟢 Чистый профит: 🔥 **+${net_profit_usd:.2f} USD** (~**{profit_byn:.2f} BYN**)\n"
                             f"📈 Процент чистыми: **{((net_profit_usd/CURRENT_DEPOSIT)*100):.2f}%**\n\n"
                             f"📋 **ПЛАН ДЕЙСТВИЙ ДЛЯ ЗАРАБОТКА:**\n"
@@ -171,59 +167,65 @@ def global_auto_scanner():
                 continue
         time.sleep(30)
 
+# Интерфейс кнопок меню управления
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_check = types.KeyboardButton("🔍 Проверить вручную")
-    btn_set_500 = types.KeyboardButton("💵 Депозит $500")
-    btn_set_1000 = types.KeyboardButton("💵 Депозит $1000")
-    markup.add(btn_check)
-    markup.add(btn_set_500, btn_set_1000)
+    btn_custom_dep = types.KeyboardButton("✍️ Ввести свой депо")
+    btn_alarm_2 = types.KeyboardButton("🚨 Сигнал от $2")
+    btn_alarm_10 = types.KeyboardButton("🚨 Сигнал от $10")
+    
+    markup.add(btn_check, btn_custom_dep)
+    markup.add(btn_alarm_2, btn_alarm_10)
     return markup
 
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     welcome_text = (
         f"👋 **Робот-автосканер арбитража запущен на Render!**\n\n"
-        f"💰 Капитал: **${CURRENT_DEPOSIT:.2f} USD**\n"
+        f"💰 Капитал для расчетов: **${CURRENT_DEPOSIT:.2f} USD**\n"
         f"🚨 Будильник настроен на профит от: **${MIN_PROFIT_TRIGGER_USD:.2f} USD**\n\n"
-        f"Я сам круглосуточно сканирую стаканы Dzengi и Bybit. Если появится прибыльная схема — я пришлю уведомление со звуком!"
+        f"Вы можете изменять порог будильника кнопками или задать абсолютно любое значение своего депозита в калькулятор!"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
+# Функция-перехватчик ввода произвольного депозита
+def process_custom_deposit_step(message):
+    global CURRENT_DEPOSIT
+    try:
+        # Очищаем текст от возможных пробелов и знаков $
+        clean_text = message.text.replace("$", "").replace(" ", "").strip()
+        new_dep = float(clean_text)
+        if new_dep <= 0:
+            raise ValueError
+            
+        CURRENT_DEPOSIT = new_dep
+        bot.send_message(message.chat.id, f"✅ Капитал успешно перенастроен! Теперь автосканер и ручной расчет опираются на ваш депозит: **${CURRENT_DEPOSIT:.2f} USD**.", reply_markup=get_main_keyboard())
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "❌ Ошибка! Введите корректное положительное число. Например: `750` или `2500`", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, process_custom_deposit_step)
+
 @bot.message_handler(func=lambda message: True)
 def handle_text_buttons(message):
-    global CURRENT_DEPOSIT
+    global CURRENT_DEPOSIT, MIN_PROFIT_TRIGGER_USD
     
-    if message.text == "💵 Депозит $500":
-        CURRENT_DEPOSIT = 500.0
-        bot.send_message(message.chat.id, f"✅ Капитал переключен на **$500.00 USD**.", reply_markup=get_main_keyboard())
+    # Кнопка переключения в режим ожидания ввода суммы
+    if message.text == "✍️ Ввести свой депо":
+        msg = bot.send_message(message.chat.id, "✍️ Напишите в чат сумму вашего оборотного депозита (только число в долларах, например: `1500`):")
+        bot.register_next_step_handler(msg, process_custom_deposit_step)
         return
-    elif message.text == "💵 Депозит $1000":
-        CURRENT_DEPOSIT = 1000.0
-        bot.send_message(message.chat.id, f"✅ Капитал переключен на **$1000.00 USD**.", reply_markup=get_main_keyboard())
+        
+    elif message.text == "🚨 Сигнал от $2":
+        MIN_PROFIT_TRIGGER_USD = 2.0
+        bot.send_message(message.chat.id, f"✅ Будильник перенастроен на чистую прибыль от **$2.00 USD** (сигналы будут чаще).", reply_markup=get_main_keyboard())
         return
+    elif message.text == "🚨 Сигнал от $10":
+        MIN_PROFIT_TRIGGER_USD = 10.0
+        bot.send_message(message.chat.id, f"✅ Будильник перенастроен на чистую прибыль от **$10.00 USD** (только самые сочные связки).", reply_markup=get_main_keyboard())
+        return
+        
     elif message.text == "🔍 Проверить вручную":
         bot.send_chat_action(message.chat.id, 'typing')
         for coin in MONETS.keys():
             try:
                 dzengi_p, bybit_p = get_orderbook_prices(coin, CURRENT_DEPOSIT)
-                usd_after_dzengi = CURRENT_DEPOSIT * (1 - DZENGI_TRADE_FEE)
-                coins_bought = usd_after_dzengi / dzengi_p
-                coins_on_bybit = coins_bought - MONETS[coin]["withdraw_fee"]
-                
-                if coins_on_bybit > 0:
-                    final_usdt = (coins_on_bybit * bybit_p) * (1 - BYBIT_TRADE_FEE)
-                    net_profit_usd = final_usdt - CURRENT_DEPOSIT
-                    p2p_rate = get_live_byn_p2p_rate()
-                    
-                    if net_profit_usd > 0:
-                        bot.send_message(message.chat.id, f"🟢 Найдена связка по **{coin}**!\nПрофит: **+${net_profit_usd:.2f}** (~**{(net_profit_usd*p2p_rate):.2f} BYN**)", reply_markup=get_main_keyboard())
-                        return
-            except:
-                continue
-        bot.send_message(message.chat.id, "📉 Прибыльных связок прямо сейчас нет. Авто-сканер продолжает искать темы в фоне...", reply_markup=get_main_keyboard())
-
-if __name__ == "__main__":
-    threading.Thread(target=run_dummy_server, daemon=True).start()
-    threading.Thread(target=global_auto_scanner, daemon=True).start()
-    bot.infinity_polling()
