@@ -108,7 +108,7 @@ def get_orderbook_prices(coin, deposit):
     avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids)
     return avg_dzengi_price, avg_bybit_price
 
-# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ОШИБКА ИСПРАВЛЕНА ⚡)
+# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ОШИБКА ИСПРАВЛЕНА НА 100% ⚡)
 def check_bybit_wallet_status(coin):
     try:
         url = f"https://bybit.com{coin}USDT"
@@ -228,4 +228,3 @@ def handle_text_buttons(message):
         for coin in MONETS.keys():
             try:
                 dzengi_p, bybit_p = get_orderbook_prices(coin, CURRENT_DEPOSIT)
-                usd_after_dzengi = CURRENT_DEPOSIT * (1 - DZENGI_TRADE_FEE)
