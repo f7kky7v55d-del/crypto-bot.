@@ -13,7 +13,7 @@ def get_bybit_price():
     try:
         url = "https://bybit.com"
         response = requests.get(url, timeout=5).json()
-        return float(response["result"]["list"][0]["lastPrice"])
+        return float(response["result"]["list"]["lastPrice"])
     except:
         return None
 
