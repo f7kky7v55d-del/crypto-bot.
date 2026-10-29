@@ -3,6 +3,7 @@ import requests
 import telebot
 import threading
 
+# --- НАСТРОЙКИ БОТА ---
 TG_TOKEN = "9188990680:AAEmtD3P4Ej78ej8ARmpSXq6gDacq25ka44"
 USER_CHAT_ID = "7965148154"
 MIN_SPREAD = 1.2
@@ -10,37 +11,52 @@ CHECK_INTERVAL = 10
 
 bot = telebot.TeleBot(TG_TOKEN)
 
-# Глобальный флаг для управления работой мониторинга (True - работает, False - на паузе)
+# Глобальный флаг управления (True - включен, False - на паузе)
 IS_RUNNING = True
 
+# Монеты и их точные тикеры для официальных API-запросов
 MONETS = {
-    "LTC": {"bybit": "LTCUSDT", "dzengi": "LTC/USDT"},
-    "XRP": {"bybit": "XRPUSDT", "dzengi": "XRP/USDT"},
-    "TRX": {"bybit": "TRXUSDT", "dzengi": "TRX/USDT"}
+    "LTC": {"bybit": "LTCUSDT", "dzengi": "LTCUSDT"},
+    "XRP": {"bybit": "XRPUSDT", "dzengi": "XRPUSDT"},
+    "TRX": {"bybit": "TRXUSDT", "dzengi": "TRXUSDT"}
 }
 
 def get_prices(coin_info):
     try:
-        bybit_res = requests.get(f"https://bybit.com{coin_info['bybit']}", timeout=5).json()
-        dzengi_res = requests.get(f"https://currency.com{coin_info['dzengi']}", timeout=5).json()
+        # Официальный публичный REST API Bybit V5 (категория spot)
+        bybit_url = f"https://bybit.com{coin_info['bybit']}"
+        bybit_res = requests.get(bybit_url, timeout=5).json()
         
+        # Официальный публичный REST API Currency.com (Dzengi)
+        dzengi_url = f"https://currency.com{coin_info['dzengi']}"
+        dzengi_res = requests.get(dzengi_url, timeout=5).json()
+        
+        # Исправленный безопасный разбор ответов
         bybit_price = float(bybit_res["result"]["list"][0]["lastPrice"])
-        dzengi_price = float(dzengi_res["ask"])
+        
+        # На Dzengi ответ приходит либо объектом, либо массивом из одного объекта
+        if isinstance(dzengi_res, list):
+            dzengi_price = float(dzengi_res[0]["askPrice"])
+        else:
+            dzengi_price = float(dzengi_res["askPrice"])
+            
         return dzengi_price, bybit_price
-    except:
+    except Exception as e:
+        # Если API временно недоступно или пропал интернет — бот не падает, а логирует ошибку
+        print(f"Ошибка получения цен для {coin_info['bybit']}: {e}")
         return None, None
 
-# Фоновая функция мониторинга рынка
+# Фоновая функция циклического мониторинга
 def monitor_market():
     global IS_RUNNING
     while True:
-        # Если флаг выключен (/stop), мониторинг просто ждет и ничего не отправляет
+        # Если отправили команду /stop, поток просто "спит" и ждет /start
         if not IS_RUNNING:
             time.sleep(1)
             continue
             
         for coin_name, coin_info in MONETS.items():
-            # Дополнительная проверка внутри цикла, чтобы мгновенно среагировать на /stop
+            # Дополнительная проверка, чтобы мгновенно прервать цикл при /stop
             if not IS_RUNNING:
                 break
                 
@@ -56,21 +72,25 @@ def monitor_market():
                         f"📈 Спред: 🔥 **{spread:.2f}%**\n"
                         f"💼 Профит с $1000: ~**${(1000 * spread / 100):.2f}**\n"
                     )
-                    bot.send_message(USER_CHAT_ID, message, parse_mode="Markdown")
-                    time.sleep(60) 
+                    try:
+                        bot.send_message(USER_CHAT_ID, message, parse_mode="Markdown")
+                        time.sleep(60)  # Пауза, чтобы не спамить одной и той же монетой
+                    except Exception as tg_err:
+                        print(f"Не удалось отправить сообщение в Telegram: {tg_err}")
+                        
         time.sleep(CHECK_INTERVAL)
 
-# Обработчик команды /start
+# Обработчик команды /start в Telegram
 @bot.message_handler(commands=['start'])
 def start_bot(message):
     global IS_RUNNING
     if not IS_RUNNING:
         IS_RUNNING = True
-        bot.send_message(USER_CHAT_ID, "▶️ Мониторинг рынка возобновлен!")
+        bot.send_message(USER_CHAT_ID, "▶️ Мониторинг рынка возобновлен! Ищу связки...")
     else:
-        bot.send_message(USER_CHAT_ID, "🔥 Бот уже запущен и активно мониторит LTC, XRP, TRX...")
+        bot.send_message(USER_CHAT_ID, "🔥 Бот уже запущен и активно сканирует цены.")
 
-# Обработчик команды /stop
+# Обработчик команды /stop в Telegram
 @bot.message_handler(commands=['stop'])
 def stop_bot(message):
     global IS_RUNNING
@@ -78,15 +98,15 @@ def stop_bot(message):
         IS_RUNNING = False
         bot.send_message(USER_CHAT_ID, "🛑 Мониторинг рынка приостановлен. Для возобновления отправьте /start.")
     else:
-        bot.send_message(USER_CHAT_ID, "⏸️ Мониторинг уже находится на паузе.")
+        bot.send_message(USER_CHAT_ID, "⏸️ Мониторинг уже стоит на паузе.")
 
 if __name__ == "__main__":
-    # 1. Запускаем функцию monitor_market в отдельном фоновом потоке
+    # 1. Запуск мониторинга рынка в фоновом потоке
     threading.Thread(target=monitor_market, daemon=True).start()
     
-    # Сообщение о первом старте
-    bot.send_message(USER_CHAT_ID, "🚀 Бот успешно запущен! Отправьте /stop для паузы или /start для проверки статуса.")
+    # Стартовое системное уведомление
+    print("Бот успешно запущен на компьютере!")
+    bot.send_message(USER_CHAT_ID, "🚀 Бот успешно запущен! Отправьте /stop для паузы или /start для возобновления.")
     
-    # 2. Запускаем постоянный опрос команд Telegram в основном потоке
+    # 2. Бесконечный запуск прослушивания команд Telegram (основной поток)
     bot.infinity_polling()
-
