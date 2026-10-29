@@ -16,7 +16,7 @@ USER_CHAT_ID = "7965148154"
 CURRENT_DEPOSIT = 1000.0  
 bot = telebot.TeleBot(TG_TOKEN)
 
-# Прямые ссылки на стабильные публичные API бирж без склеек строк
+# Прямые ссылки на стабильные публичные API бирж
 MONETS = {
     "LTC": {
         "bybit_url": "https://bybit.com",
@@ -111,10 +111,10 @@ def get_orderbook_prices(coin, deposit):
     avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids[0][0])
     return avg_dzengi_price, avg_bybit_price
 
-# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы
+# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ИСПРАВЛЕНО)
 def check_bybit_wallet_status(coin):
     try:
-        url = f"https://bybit.com{MONETS[coin]['bybit_url'].split('symbol=')[1].split('&')[0]}"
+        url = f"https://bybit.com{coin}USDT"
         res = requests.get(url, timeout=5).json()
         return res["result"]["list"][0]["status"] == "Trading"
     except:
