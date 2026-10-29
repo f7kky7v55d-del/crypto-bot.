@@ -2,7 +2,7 @@ import time
 import requests
 import telebot
 
-TG_TOKEN = "9188990680:AAG8uQ_jl094-AQligfEQJFDdXnHIdf48dI"
+TG_TOKEN = "9188990680:AAEmtD3P4Ej78ej8ARmpSXq6gDacq25ka44"
 USER_CHAT_ID = "7965148154"
 MIN_SPREAD = 1.2
 CHECK_INTERVAL = 10
