@@ -1,6 +1,7 @@
 import time
 import requests
 import telebot
+import threading
 
 TG_TOKEN = "9188990680:AAEmtD3P4Ej78ej8ARmpSXq6gDacq25ka44"
 USER_CHAT_ID = "7965148154"
@@ -9,7 +10,9 @@ CHECK_INTERVAL = 10
 
 bot = telebot.TeleBot(TG_TOKEN)
 
-# Монеты и их правильные тикеры для Bybit и Dzengi
+# Глобальный флаг для управления работой мониторинга (True - работает, False - на паузе)
+IS_RUNNING = True
+
 MONETS = {
     "LTC": {"bybit": "LTCUSDT", "dzengi": "LTC/USDT"},
     "XRP": {"bybit": "XRPUSDT", "dzengi": "XRP/USDT"},
@@ -18,7 +21,6 @@ MONETS = {
 
 def get_prices(coin_info):
     try:
-        # Прямые запросы к техническим API серверов
         bybit_res = requests.get(f"https://bybit.com{coin_info['bybit']}", timeout=5).json()
         dzengi_res = requests.get(f"https://currency.com{coin_info['dzengi']}", timeout=5).json()
         
@@ -28,10 +30,20 @@ def get_prices(coin_info):
     except:
         return None, None
 
+# Фоновая функция мониторинга рынка
 def monitor_market():
-    bot.send_message(USER_CHAT_ID, "🔥 Мульти-бот запущен! Мониторю LTC, XRP, TRX 24/7...")
+    global IS_RUNNING
     while True:
+        # Если флаг выключен (/stop), мониторинг просто ждет и ничего не отправляет
+        if not IS_RUNNING:
+            time.sleep(1)
+            continue
+            
         for coin_name, coin_info in MONETS.items():
+            # Дополнительная проверка внутри цикла, чтобы мгновенно среагировать на /stop
+            if not IS_RUNNING:
+                break
+                
             dzengi_p, bybit_p = get_prices(coin_info)
             
             if dzengi_p and bybit_p and dzengi_p < bybit_p:
@@ -45,8 +57,36 @@ def monitor_market():
                         f"💼 Профит с $1000: ~**${(1000 * spread / 100):.2f}**\n"
                     )
                     bot.send_message(USER_CHAT_ID, message, parse_mode="Markdown")
-                    time.sleep(60) # Пауза 1 минута, чтобы не спамить одной монетой
+                    time.sleep(60) 
         time.sleep(CHECK_INTERVAL)
 
+# Обработчик команды /start
+@bot.message_handler(commands=['start'])
+def start_bot(message):
+    global IS_RUNNING
+    if not IS_RUNNING:
+        IS_RUNNING = True
+        bot.send_message(USER_CHAT_ID, "▶️ Мониторинг рынка возобновлен!")
+    else:
+        bot.send_message(USER_CHAT_ID, "🔥 Бот уже запущен и активно мониторит LTC, XRP, TRX...")
+
+# Обработчик команды /stop
+@bot.message_handler(commands=['stop'])
+def stop_bot(message):
+    global IS_RUNNING
+    if IS_RUNNING:
+        IS_RUNNING = False
+        bot.send_message(USER_CHAT_ID, "🛑 Мониторинг рынка приостановлен. Для возобновления отправьте /start.")
+    else:
+        bot.send_message(USER_CHAT_ID, "⏸️ Мониторинг уже находится на паузе.")
+
 if __name__ == "__main__":
-    monitor_market()
+    # 1. Запускаем функцию monitor_market в отдельном фоновом потоке
+    threading.Thread(target=monitor_market, daemon=True).start()
+    
+    # Сообщение о первом старте
+    bot.send_message(USER_CHAT_ID, "🚀 Бот успешно запущен! Отправьте /stop для паузы или /start для проверки статуса.")
+    
+    # 2. Запускаем постоянный опрос команд Telegram в основном потоке
+    bot.infinity_polling()
+
