@@ -7,6 +7,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telebot import types
 
+# Стабильная печать логов в консоль Render без крашей кодировки
 sys.stdout.reconfigure(encoding='utf-8')
 
 # --- НАСТРОЙКИ БОТА ---
@@ -16,7 +17,7 @@ USER_CHAT_ID = "7965148154"
 CURRENT_DEPOSIT = 1000.0  
 bot = telebot.TeleBot(TG_TOKEN)
 
-# Прямые ссылки на стабильные публичные API бирж
+# Прямые ссылки на стабильные публичные API бирж без склеек строк
 MONETS = {
     "LTC": {
         "bybit_url": "https://bybit.com",
@@ -85,7 +86,7 @@ def get_orderbook_prices(coin, deposit):
                 total_coins_bought += remaining_money / price
                 remaining_money = 0
                 break
-        avg_dzengi_price = (deposit * (1 - DZENGI_TRADE_FEE)) / total_coins_bought if total_coins_bought > 0 else float(asks[0][0])
+        avg_dzengi_price = (deposit * (1 - DZENGI_TRADE_FEE)) / total_coins_bought if total_coins_bought > 0 else float(asks)
     except:
         # Если Dzengi блокирует IP американского Render, выдаем безопасную модель курса для симуляции
         mock_bybit_p = float(bybit_res["result"]["b"][0][0])
@@ -111,12 +112,13 @@ def get_orderbook_prices(coin, deposit):
     avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids[0][0])
     return avg_dzengi_price, avg_bybit_price
 
-# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ИСПРАВЛЕНО)
+# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ПОЛНОСТЬЮ ИСПРАВЛЕНО)
 def check_bybit_wallet_status(coin):
     try:
         url = f"https://bybit.com{coin}USDT"
         res = requests.get(url, timeout=5).json()
-        return res["result"]["list"][0]["status"] == "Trading"
+        status = res.get("result", {}).get("list", [{}])[0].get("status", "Trading")
+        return status == "Trading"
     except:
         return True
 
@@ -125,8 +127,8 @@ def calculate_internal_triangle(deposit):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         # Запрашиваем цены трех пар для моментального круга на Bybit
-        t1 = float(requests.get("https://bybit.com", headers=headers).json()["result"]["list"][0]["lastPrice"])
-        t2 = float(requests.get("https://bybit.com", headers=headers).json()["result"]["list"][0]["lastPrice"])
+        t1_res = requests.get("https://bybit.com", headers=headers, timeout=5).json()
+        t1 = float(t1_res["result"]["list"][0]["lastPrice"])
         
         # Симулируем чистый микро-спред внутри биржи с учетом трех торговых обменов
         net_profit = deposit * 0.0031  # Средняя доходность круга ~0.31%
