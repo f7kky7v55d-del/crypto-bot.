@@ -84,9 +84,10 @@ def get_orderbook_prices(coin, deposit):
                 total_coins_bought += remaining_money / price
                 remaining_money = 0
                 break
-        avg_dzengi_price = (deposit * (1 - DZENGI_TRADE_FEE)) / total_coins_bought if total_coins_bought > 0 else float(asks)
+        avg_dzengi_price = (deposit * (1 - DZENGI_TRADE_FEE)) / total_coins_bought if total_coins_bought > 0 else float(asks[0][0])
     except:
-        mock_bybit_p = float(bybit_res["result"]["b"])
+        # Корректный блок обработки исключения, предотвращающий падение
+        mock_bybit_p = float(bybit_res["result"]["b"][0][0])
         avg_dzengi_price = mock_bybit_p * 0.995 
     
     bids = bybit_res["result"]["b"]
@@ -105,15 +106,14 @@ def get_orderbook_prices(coin, deposit):
             remaining_coins = 0
             break
             
-    avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids)
+    avg_bybit_price = total_usd_received / total_coins_to_sell if total_coins_to_sell > 0 else float(bids[0][0])
     return avg_dzengi_price, avg_bybit_price
 
-# ФУНКЦИЯ 2: Проверка статуса кошельков на тех-работы (ОШИБКА ИСПРАВЛЕНА НА 100% ⚡)
 def check_bybit_wallet_status(coin):
     try:
         url = f"https://bybit.com{coin}USDT"
         res = requests.get(url, timeout=5).json()
-        status = res.get("result", {}).get("list", [{}])[0].get("status", "Trading")
+        status = res.get("result", {}).get("list", [{}]).get("status", "Trading")
         return status == "Trading"
     except:
         return True
@@ -228,3 +228,4 @@ def handle_text_buttons(message):
         for coin in MONETS.keys():
             try:
                 dzengi_p, bybit_p = get_orderbook_prices(coin, CURRENT_DEPOSIT)
+                usd_after_dzengi = CURRENT_DEPOSIT * (1 - DZENGI_TRADE_FEE)
